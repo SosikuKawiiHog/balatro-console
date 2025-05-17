@@ -350,7 +350,7 @@ public:
             int val = static_cast<int>(ph);
             switch(val) {
                 case 0: {
-                    chips = 500, mult = 1;
+                    chips = 5, mult = 1;
                     auto max_elem = *rank_counts.rbegin();
                     chips += max_elem.first;
                     break;
