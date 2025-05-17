@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <map>
 #include <list>
+#include <memory>
 
 using namespace std;
 
@@ -349,7 +350,7 @@ public:
             int val = static_cast<int>(ph);
             switch(val) {
                 case 0: {
-                    chips = 5, mult = 1;
+                    chips = 500, mult = 1;
                     auto max_elem = *rank_counts.rbegin();
                     chips += max_elem.first;
                     break;
@@ -466,7 +467,8 @@ public:
         _multiplier_diff += 0.5;
     }
     list<Blind>& get_blinds() {return  _blinds; }
-    short get_global_current() {return  _global_current; }
+    short get_current() const { return _current; }
+    short get_global_current() const {return  _global_current; }
     Blind& get_current_blind() { return *std::next(_blinds.begin(), _current); }
     void set_current() { _current++;}
 };
@@ -475,15 +477,14 @@ short Ante::_global_current = 0;
 class Round{
     Deck _full_deck;
     //Blind _level;
-    Ante _ante;
+    unique_ptr<Ante> _ante;
     size_t _score = 0;
 public:
-    Round(int score) : _full_deck(), /*_level(score)*/ _ante(), _score(0){}
+    Round(int score) : _full_deck(), /*_level(score)*/ _ante(make_unique<Ante>()), _score(0){}
     Deck& get_full_deck() {return _full_deck; }
-    //Blind& get_level() {return _ante.get_blinds();}
 
     void print(){
-        cout << "Score to beat: " << _ante.get_current_blind().get_score() << endl;
+        cout << "Score to beat: " << _ante->get_current_blind().get_score() << endl;
         cout << "Current score: " << _score << endl;
         cout << "Hands: " << _full_deck.get_play_count() << endl;
         cout << "Discards: " << _full_deck.get_discard_count() << endl;
@@ -492,11 +493,14 @@ public:
 
     void play_hand(){
         _score += _full_deck.play();
-        if(_score >= _ante.get_current_blind().get_score()){
-            _ante.set_current();
+        if(_score >= _ante->get_current_blind().get_score()){
+            _ante->set_current();
             _full_deck.refill_deck();
             cout << "УСПЕХ";
             _score = 0;
+            if(_ante->get_current() >= 3){
+                _ante = make_unique<Ante>();
+            }
         }
         if(_full_deck.get_play_count() == 0){
             throw std::out_of_range("ПРОЕБАНО");
