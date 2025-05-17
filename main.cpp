@@ -174,16 +174,26 @@ public:
 
     void select(size_t index){
         if(_selected.size() == _max_select) return;
-        _selected.push_back(_hand.at(index));
-        _hand.erase(_hand.begin() + index);
-        define_hand();
+        if(_selected.size() > index){
+            _selected.push_back(_hand.at(index));
+            _hand.erase(_hand.begin() + index);
+            define_hand();
+        }
+        else{
+            cout << "Illegal pick" << endl;
+        }
     }
 
     void unselect(size_t index){
         if(_selected.size() == 0) return;
-        _hand.push_back(_selected.at(index));
-        _selected.erase(_selected.begin() + index);
-        define_hand();
+        if(_hand.size() > index){
+            _hand.push_back(_selected.at(index));
+            _selected.erase(_selected.begin() + index);
+            define_hand();
+        }
+        else{
+            cout << "Illegal pick" << endl;
+        }
     }
 
     void define_hand(){
