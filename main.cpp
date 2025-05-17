@@ -4,6 +4,7 @@
 #include <random>
 #include <algorithm>
 #include <map>
+#include <list>
 
 using namespace std;
 
@@ -174,7 +175,7 @@ public:
 
     void select(size_t index){
         if(_selected.size() == _max_select) return;
-        if(_selected.size() > index){
+        if(_hand.size() > index){
             _selected.push_back(_hand.at(index));
             _hand.erase(_hand.begin() + index);
             define_hand();
@@ -186,7 +187,7 @@ public:
 
     void unselect(size_t index){
         if(_selected.size() == 0) return;
-        if(_hand.size() > index){
+        if(_selected.size() > index){
             _hand.push_back(_selected.at(index));
             _selected.erase(_selected.begin() + index);
             define_hand();
@@ -453,17 +454,36 @@ public:
     }
 };
 
+class Ante{
+    list<Blind> _blinds;
+    double _multiplier_diff = 1;
+    static short _global_current;
+    short _current = 0;
+public:
+    Ante(){
+        _global_current++;
+        for (int i = 0; i < 3; i++) _blinds.emplace_back((300 * _global_current) * _multiplier_diff),
+        _multiplier_diff += 0.5;
+    }
+    list<Blind>& get_blinds() {return  _blinds; }
+    short get_global_current() {return  _global_current; }
+    Blind& get_current_blind() { return *std::next(_blinds.begin(), _current); }
+    void set_current() { _current++;}
+};
+
+short Ante::_global_current = 0;
 class Round{
     Deck _full_deck;
-    Blind _level;
+    //Blind _level;
+    Ante _ante;
     size_t _score = 0;
 public:
-    Round(int score) : _full_deck(), _level(score), _score(0){}
+    Round(int score) : _full_deck(), /*_level(score)*/ _ante(), _score(0){}
     Deck& get_full_deck() {return _full_deck; }
-    Blind& get_level() {return _level;}
+    //Blind& get_level() {return _ante.get_blinds();}
 
     void print(){
-        cout << "Score to beat: " << _level.get_score() << endl;
+        cout << "Score to beat: " << _ante.get_current_blind().get_score() << endl;
         cout << "Current score: " << _score << endl;
         cout << "Hands: " << _full_deck.get_play_count() << endl;
         cout << "Discards: " << _full_deck.get_discard_count() << endl;
@@ -472,8 +492,8 @@ public:
 
     void play_hand(){
         _score += _full_deck.play();
-        if(_score >= _level.get_score()){
-            _level.set_score(450);
+        if(_score >= _ante.get_current_blind().get_score()){
+            _ante.set_current();
             _full_deck.refill_deck();
             cout << "УСПЕХ";
             _score = 0;
