@@ -262,6 +262,137 @@ public:
 };
 
 
+class Effect{
+public:
+    virtual void apply_effect(Hand& hand, size_t& chips, size_t& mult) const = 0;
+    virtual string get_description() const = 0;
+};
+
+class SimpleMultEffect: public Effect{
+    void apply_effect(Hand& hand, size_t& chips, size_t& mult) const override{
+        mult += 4;
+    }
+    string get_description() const{
+        return "+4 mult";
+    }
+};
+
+class PairChips: public Effect{
+    void apply_effect(Hand& hand, size_t& chips, size_t& mult) const override{
+        auto ph = hand.evaluate_selected();
+        if(ph == PokerHand::OnePair || ph == PokerHand::TwoPair || ph == PokerHand::ThreeOfAKind || ph == PokerHand::FullHouse || ph == PokerHand::FourOfAKind){
+            chips += 50;
+        }
+    }
+    string get_description() const override{
+        return "+50 chips if contains a pair";
+    }
+};
+
+class BloodGem: public Effect{
+    void apply_effect(Hand& hand, size_t& chips, size_t& mult) const override{
+        for(const auto& cards: hand.get_selected()){
+            if(cards.get_suit() == 2){
+                mult *= 2;
+            }
+        }
+    }
+    string get_description() const override{
+        return "*2 mult for each Heart card";
+    }
+};
+
+class ChipsXMult: public Effect{
+    void apply_effect(Hand& hand, size_t& chips, size_t& mult) const override{
+        double average = (chips + mult) / 2.;
+        chips = average;
+        mult = average;
+    }
+    string get_description() const override{
+        return "Balances chips and mult";
+    }
+};
+
+enum class Rarity{
+    common,
+    uncommon,
+    rare,
+    legendary,
+};
+
+class Joker{
+    string _name;
+    shared_ptr<Effect> _effect;
+    int _price;
+    Rarity _rarity;
+public:
+    Joker(string name, unique_ptr<Effect> effect,int price, Rarity rarity): _name(name), _effect(std::move(effect)), _price(price), _rarity(rarity) {}
+    void apply_effect(Hand& hand, size_t& chips, size_t& mult) const{
+        _effect->apply_effect(hand, chips, mult);
+    }
+    int get_price() const {return _price; }
+    Rarity get_rarity() { return _rarity; }
+    string get_description() { return _effect->get_description(); }
+    void print() const {
+        switch(_rarity){
+            case Rarity::common: cout << "Common: "; break;
+            case Rarity::uncommon: cout << "Uncommon: "; break;
+            case Rarity::rare: cout << "Rare: "; break;
+            case Rarity::legendary: cout << "Legendary: "; break;
+        }
+        cout << _name << " $" << _price << endl;
+    }
+};
+
+class JokerManager{
+    vector<unique_ptr<Joker>> _all_jokers;
+    mt19937 _rng;
+
+    const map<Rarity, int> _rarity_weights ={
+            {Rarity::common, 60},
+            {Rarity::uncommon, 20},
+            {Rarity::rare, 15},
+            {Rarity::legendary, 5}
+    };
+public:
+    JokerManager(): _rng(random_device{}()){
+        initialize_jokers();
+    }
+    void initialize_jokers(){
+        _all_jokers.emplace_back(make_unique<Joker>("Joker", make_unique<SimpleMultEffect>(),2, Rarity::common));
+        _all_jokers.emplace_back(make_unique<Joker>("Couples", make_unique<PairChips>(),3, Rarity::uncommon));
+        _all_jokers.emplace_back(make_unique<Joker>("Bloobonr", make_unique<BloodGem>(),4, Rarity::rare));
+        _all_jokers.emplace_back(make_unique<Joker>("NotEldenRing", make_unique<ChipsXMult>(),7,Rarity::legendary));
+    };
+
+    vector<const Joker*> get_random_jokers(int count){
+        vector<const Joker*> res;
+        vector<unique_ptr<Joker>> temp;
+
+        vector<Rarity> rarity_pool;
+        for(const auto& [rarity, weight]: _rarity_weights){
+            for(int i = 0; i < weight; i++){
+                rarity_pool.push_back(rarity);
+            }
+        }
+        ::shuffle(rarity_pool.begin(), rarity_pool.end(), _rng);
+        for(int i = 0; i < count; i++){
+            Rarity selected_rarity = rarity_pool[i % rarity_pool.size()];
+            vector<Joker*> matching_jokers;
+            for(const auto& joker: _all_jokers){
+                if(joker->get_rarity() == selected_rarity){
+                    matching_jokers.push_back(joker.get());
+                }
+            }
+            if(!matching_jokers.empty()){
+                uniform_int_distribution<size_t> dist(0, matching_jokers.size()-1);
+                res.push_back(matching_jokers[dist(_rng)]);
+            }
+        }
+        return res;
+    }
+};
+
 class Deck{
     vector<Card> _deck;
     vector<Card> _used_cards;
@@ -316,7 +447,7 @@ public:
         }
     }
 
-    size_t play(){
+    size_t play(const vector<unique_ptr<Joker>>& active){
         if(_play_count != 0 && !get_hand().get_selected().empty()){
             vector<string> ranks;
             for(const auto& cards: get_hand().get_selected()){
@@ -418,6 +549,9 @@ public:
                     break;
                 }
             }
+            for(const auto& joker: active){
+                joker->apply_effect(_curr_hand,chips, mult);
+            }
             vector<Card> drawn_hand;
             drawn_hand.reserve(_curr_hand.get_selected().size());
             for(int i = 0; i < _curr_hand.get_selected().size(); i++){
@@ -472,34 +606,139 @@ public:
     Blind& get_current_blind() { return *std::next(_blinds.begin(), _current); }
     void set_current() { _current++;}
 };
-
 short Ante::_global_current = 0;
+
+class Shop{
+    JokerManager& _joker_manager;
+    int& _shop_money;
+    vector<unique_ptr<Joker>> _current_offers;
+public:
+    Shop(JokerManager& jm, int& initial): _joker_manager(jm), _shop_money(initial) {}
+
+    void refresh_offers(){
+        _current_offers.clear();
+        for(const auto& joker: _joker_manager.get_random_jokers(3)){
+            _current_offers.push_back(make_unique<Joker>(*joker));
+        }
+    }
+
+    void print() const{
+        cout << "----Shop (Money: " << _shop_money << ") ----" << endl;
+        for(size_t i = 0; i < _current_offers.size(); i++){
+            cout << i+1 << ". ";
+            _current_offers.at(i)->print();
+        }
+        cout << "4. Refresh (10)" << endl;
+    }
+
+    void buy_joker(int index, vector<unique_ptr<Joker>>& player_jokers){
+        if(index < 1 || index > _current_offers.size()) return;
+        if(_shop_money >=_current_offers[index-1]->get_price()){
+            _shop_money -= _current_offers[index-1]->get_price();
+            player_jokers.push_back(make_unique<Joker>(*_current_offers[index-1]));
+            _current_offers.erase(_current_offers.begin() + index-1);
+        }
+    }
+
+    string get_description(int index){
+        if(index < 1 || index > _current_offers.size()) return "None";
+        return _current_offers[index-1]->get_description();
+    }
+
+    void refresh_for_money(){
+        if(_shop_money >= 10){
+            _shop_money -= 10;
+            refresh_offers();
+        }
+    }
+};
+
 class Round{
     Deck _full_deck;
     //Blind _level;
     unique_ptr<Ante> _ante;
     size_t _score = 0;
+    short _rounds = 0;
+    int _money = 4;
+    Shop _shop;
+    JokerManager _jm;
+    vector<unique_ptr<Joker>> _jokers;
 public:
-    Round(int score) : _full_deck(), /*_level(score)*/ _ante(make_unique<Ante>()), _score(0){}
+    Round(int score) : _full_deck(), /*_level(score)*/ _ante(make_unique<Ante>()), _score(0),_jm(), _shop(_jm,_money), _jokers(){}
     Deck& get_full_deck() {return _full_deck; }
 
     void print(){
+        cout << "Round: " << _rounds << endl;
+        cout << "Money: " << _money << endl;
         cout << "Score to beat: " << _ante->get_current_blind().get_score() << endl;
         cout << "Current score: " << _score << endl;
         cout << "Hands: " << _full_deck.get_play_count() << endl;
         cout << "Discards: " << _full_deck.get_discard_count() << endl;
+        cout << "Jokers: " << endl;
+        for(const auto& joker: _jokers){
+            joker->print();
+        }
+        cout << endl;
         get_full_deck().get_hand().print();
     }
 
     void play_hand(){
-        _score += _full_deck.play();
+        _score += _full_deck.play(_jokers);
         if(_score >= _ante->get_current_blind().get_score()){
             _ante->set_current();
             _full_deck.refill_deck();
-            cout << "УСПЕХ";
+            cout << "УСПЕХ: " << _score << endl;
             _score = 0;
-            if(_ante->get_current() >= 3){
-                _ante = make_unique<Ante>();
+            _rounds++;
+            size_t choice;
+            size_t inner_choice;
+            _shop.refresh_offers();
+            bool now_shop = true;
+            _money = 500;
+            while(now_shop){
+                _shop.print();
+                cout << "Shop menu:\n1. Purchase\n2. Check description\n3. Leave shop\n" << endl;
+                cin >> choice;
+                switch(choice){
+                    case 1:
+                        _shop.print();
+                        cout << "Purchase for: " << endl;
+                        cin >> inner_choice;
+                        if(inner_choice > 0 && inner_choice < 4){
+                            _shop.buy_joker(inner_choice,_jokers);
+                        }
+                        else if(inner_choice == 4){
+                            _shop.refresh_for_money();
+                        }
+//                        cout << "Type index: " << endl;
+//                        cin >> index;
+//                        _shop.buy_joker(index, _jokers);
+                        break;
+                    case 2:
+                        _shop.print();
+                        cout << "Read about: " << endl;
+                        cin >> inner_choice;
+                        if(inner_choice > 0 && inner_choice < 4){
+                            cout << _shop.get_description(inner_choice) << endl;
+                        }
+                        break;
+                    case 3:
+                        _shop.refresh_offers();
+                        now_shop = false;
+                        break;
+                }
+            }
+            switch(_ante->get_current()){
+                case 1:
+                    _money += 3;
+                    break;
+                case 2:
+                    _money += 4;
+                    break;
+                case 3:
+                    _money += 5;
+                    _ante = make_unique<Ante>();
+                    break;
             }
         }
         if(_full_deck.get_play_count() == 0){
