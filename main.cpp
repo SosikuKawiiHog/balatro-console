@@ -490,7 +490,7 @@ public:
                     chips = 10, mult = 2;
                     for (const auto &pairs: rank_counts) {
                         if (pairs.second == 2) {
-                            chips += pairs.first;
+                            chips += pairs.first * 2;
                         }
                     }
                     break;
@@ -499,7 +499,7 @@ public:
                     chips = 20, mult = 2;
                     for (const auto &pairs: rank_counts) {
                         if (pairs.second == 2) {
-                            chips += pairs.first;
+                            chips += pairs.first * 2;
                         }
                     }
                     break;
@@ -523,28 +523,30 @@ public:
                 case 5: {
                     chips = 35, mult = 4;
                     for (const auto &pairs: rank_counts) {
-                        chips += pairs.first;
+                        chips += pairs.first * pairs.second;
                     }
                     break;
                 }
                 case 6: {
                     chips = 40, mult = 4;
                     for (const auto &pairs: rank_counts) {
-                        chips += pairs.first;
+                        if(pairs.second == 4){
+                            chips += pairs.first * pairs.second;
+                        }
                     }
                     break;
                 }
                 case 7: {
                     chips = 60, mult = 7;
                     for (const auto &pairs: rank_counts) {
-                        chips += pairs.first;
+                        chips += pairs.first * pairs.second;
                     }
                     break;
                 }
                 case 8: {
                     chips = 100, mult = 8;
                     for (const auto &pairs: rank_counts) {
-                        chips += pairs.first;
+                        chips += pairs.first * pairs.second;
                     }
                     break;
                 }
@@ -694,7 +696,6 @@ public:
             size_t inner_choice;
             _shop.refresh_offers();
             bool now_shop = true;
-            _money = 500;
             while(now_shop){
                 _shop.print();
                 cout << "Shop menu:\n1. Purchase\n2. Check description\n3. Leave shop\n" << endl;
